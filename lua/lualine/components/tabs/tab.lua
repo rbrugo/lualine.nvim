@@ -12,10 +12,15 @@ function Tab:init(opts)
   self.tabnr = opts.tabnr
   self.tabId = opts.tabId
   self.options = opts.options
-  self.highlights = opts.highlights
+  self.highlights = opts.highlights  --[[@type any[] ]]
   self.modified_icon = ''
+  self.icon_hl_cache = opts.icon_hl_cache
   self:get_props()
 end
+
+
+Tab.create_hl = require('lualine.component').create_hl
+
 
 function Tab:get_props()
   local buflist = vim.fn.tabpagebuflist(self.tabnr)
@@ -33,6 +38,73 @@ function Tab:get_props()
       end
     end
   end
+end
+
+
+---returns filetype for tab. Tabs ft is the filetype of buffer in last active window
+--- of the tab.
+---@return { icon: string, base_icon: string, ft_icon_len: number }
+function Tab:ft_icon()
+  if not self.options.ft_icons_enabled then
+    return { icon = '', base_icon = '', ft_icon_len = 0}
+  end
+
+  local icon, base_icon, icon_highlight_group
+  local icon_len = 0
+  local ok, devicons = pcall(require, 'nvim-web-devicons')
+  if ok then
+    local win
+    ok, win = pcall(vim.api.nvim_tabpage_get_win, self.tabnr)
+    if ok then
+      local buf
+      ok, buf = pcall(vim.api.nvim_win_get_buf, win)
+      if ok then
+        local ft = vim.fn.getbufvar(buf --[[ @as integer ]], '&ft')
+        icon, icon_highlight_group = devicons.get_icon_by_filetype(ft)
+
+        if icon == nil and icon_highlight_group == nil then
+          icon = ''
+          icon_highlight_group = 'DevIconDefault'
+        end
+        base_icon = icon
+        icon_len = vim.fn.strlen(icon)
+
+        if self.options.ft_icons_colored then
+          local highlight_color = modules.utils.extract_highlight_colors(icon_highlight_group, 'fg')
+          if highlight_color then
+            local is_active = self.current or false
+            local current_highlight = self.highlights[is_active and 'active' or 'inactive']
+            local mode_suffix = is_active and modules.highlight.get_mode_suffix() or '_inactive'
+
+            local current_hl_with_mode_name = current_highlight.name .. mode_suffix
+            local default_highlight = modules.highlight.get_lualine_hl(current_hl_with_mode_name)
+
+            local icon_group_name = ("%s_%s%s_%s"):format(current_highlight.name, icon_highlight_group, mode_suffix, is_active and 'active' or 'inactive')
+            local icon_highlight = self.icon_hl_cache[icon_group_name]
+
+            if not icon_highlight or not modules.highlight.highlight_exists(icon_group_name) then
+              local _, _, name = icon_group_name:find("^.-_.-_(.*)$")
+              local background = default_highlight and default_highlight.bg or nil
+              local color = {
+                fg = highlight_color,
+                bg = background,
+              }
+              icon_highlight = modules.highlight.create_component_highlight_group(
+                color, name, self.options, false
+              )
+              self.icon_hl_cache[icon_group_name] = icon_highlight
+            end
+
+            local formatted_icon_highlight = modules.highlight.component_format_highlight(icon_highlight)
+            local formatted_current_highlight = modules.highlight.component_format_highlight(current_highlight)
+            icon = formatted_icon_highlight .. icon .. formatted_current_highlight
+          end
+        end
+      end
+    end
+  end
+
+  return { icon = icon, base_icon = base_icon, ft_icon_len = icon_len }
 end
 
 ---returns name for tab. Tabs name is the name of buffer in last active window
@@ -97,6 +169,10 @@ end
 ---@return string
 function Tab:render()
   local name = self:label()
+  local icon_result = self:ft_icon()
+  local icon = icon_result.icon
+  local base_icon = icon_result.base_icon
+  local ft_icon_len = icon_result.ft_icon_len
   if self.options.tab_max_length ~= 0 then
     local path_separator = package.config:sub(1, 1)
     name = shorten_path(name, path_separator, self.options.tab_max_length)
@@ -122,8 +198,15 @@ function Tab:render()
     end
   end
 
-  name = Tab.apply_padding(name, self.options.padding)
-  self.len = vim.fn.strchars(name)
+  local original_len = vim.fn.strchars(name)
+  if self.options.ft_icons_enabled and not self.ellipse and ft_icon_len > 0 then
+    self.len = vim.fn.strchars(Tab.apply_padding(name .. ' ' .. base_icon, self.options.padding))
+    name = Tab.apply_padding(name .. ' ' .. icon, self.options.padding)
+  else
+    name = Tab.apply_padding(name, self.options.padding)
+    self.len = vim.fn.strchars(name)
+  end
+
 
   -- setup for mouse clicks
   local line = string.format('%%%s@LualineSwitchTab@%s%%T', self.tabnr, name)

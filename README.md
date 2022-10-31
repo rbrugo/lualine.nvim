@@ -719,6 +719,9 @@ sections = {
         modified = '[+]',  -- Text to show when the file is modified.
       },
 
+      ft_icons_enabled = true,  -- Show the filetype icon next to the tab name
+      ft_icons_colored = true,  -- The filetype icon will be colored
+
       fmt = function(name, context)
         -- Show + if buffer is modified in tab
         local buflist = vim.fn.tabpagebuflist(context.tabnr)

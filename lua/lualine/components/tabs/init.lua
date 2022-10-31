@@ -19,6 +19,8 @@ local default_options = {
   symbols = {
     modified = '[+]',
   },
+  ft_icons_enabled = false,
+  ft_icons_colored = true,
 }
 
 -- This function is duplicated in buffers
@@ -57,13 +59,21 @@ function M:init(options)
     active = self:create_hl(self.options.tabs_color.active, 'active'),
     inactive = self:create_hl(self.options.tabs_color.inactive, 'inactive'),
   }
+
+  self.icon_hl_cache = {}
 end
 
 function M:update_status()
   local data = {}
   local tabs = {}
   for nr, id in ipairs(vim.api.nvim_list_tabpages()) do
-    tabs[#tabs + 1] = Tab { tabId = id, tabnr = nr, options = self.options, highlights = self.highlights }
+    tabs[#tabs + 1] = Tab {
+      tabId = id,
+      tabnr = nr,
+      options = self.options,
+      highlights = self.highlights,
+      icon_hl_cache = self.icon_hl_cache
+    }
   end
   -- mark the first, last, current, before current, after current tabpages
   -- for rendering
@@ -103,6 +113,7 @@ function M:update_status()
       tabnr = vim.fn.tabpagenr(),
       options = self.options,
       highlights = self.highlights,
+      icon_hl_cache = self.icon_hl_cache
     }
     t.current = true
     t.last = true
